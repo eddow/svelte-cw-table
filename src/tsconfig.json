@@ -1,0 +1,27 @@
+{
+	"compilerOptions": {
+	  "sourceMap": false,
+	  "outDir": "../dist",
+	  "noImplicitAny": false,
+	  "moduleResolution": "node",
+	  "experimentalDecorators": true,
+	  "emitDecoratorMetadata": true,
+	  "target": "ES6",
+	  "lib": [
+		"es5",
+		"es2015.promise"
+	  ],
+	  "allowSyntheticDefaultImports": true,
+	  "allowJs": true,
+		  "typeRoots": ["../node_modules/@types"],
+		  "baseUrl": "."
+	},
+	  "exclude": [
+		  "**/*.spec.ts",
+		  "**/*.d.ts"
+	  ],
+	  "include": [
+		  "./**/*.ts",
+		  "./**/*.svelte"
+	  ]
+  }
