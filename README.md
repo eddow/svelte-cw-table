@@ -20,7 +20,8 @@ The `Column` (and `Selection` who is a peculiar column) *have to* appear in a `T
 ## Demo
 
 The repo can be cloned and `npm run demo` will watch the files. `public/index.html` can then be opened statically.
-(TODO: rawcdn.githack.com)
+
+Also available [here](https://rawcdn.githack.com/eddow/svelte-cw-table/master/public/index.html), executing [this code](https://github.com/eddow/svelte-cw-table/blob/master/demo/App.svelte)
 
 ## Table
 
@@ -56,3 +57,7 @@ If no header slot is specified, the header will be the `title` property and - if
 ### Attribute
 
 Use `bind:selection={selection}` to keep the variable `selection` a `Set` of the selected rows (the objects, not the keys)
+
+## TODOs
+
+Next step: make cells editable

@@ -3,7 +3,7 @@
 	import {getContext} from 'svelte';
 	import {dataContextKey, rowContextKey} from './table'
 
-	export let selection: Set<any[]>;
+	export let selection: Set<any>;
 	const row: any = getContext(rowContextKey);
 	let all: 'indeterminate'|boolean;
 	let selected: boolean;

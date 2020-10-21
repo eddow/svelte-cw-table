@@ -2399,10 +2399,10 @@ var app = (function () {
     	const block = {
     		c: function create() {
     			button0 = element("button");
-    			button0.textContent = "Add Karianna";
+    			button0.textContent = "Add Karianne";
     			t1 = space();
     			button1 = element("button");
-    			button1.textContent = "Delete Karianna";
+    			button1.textContent = "Delete Karianne";
     			t3 = space();
     			button2 = element("button");
     			button2.textContent = "All";

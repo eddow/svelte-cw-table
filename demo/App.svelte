@@ -1,19 +1,13 @@
 <script lang="ts">
 	import {Table, Column, Selection} from '../src'
-	interface User {
-		id: number;
-		name: string;
-		username: string;
-		email: string;
-	}
 	let promise = fetch('https://jsonplaceholder.typicode.com/users')
 			.then(response => response.json()),
-		selection = new Set<User[]>();
+		selection = new Set<any>();
 </script>
 <template>
 	{#await promise then data}
-		<button on:click={()=> {selection.add(data[3]); selection = new Set(selection);}}>Add Karianna</button>
-		<button on:click={()=> {selection.delete(data[3]); selection = new Set(selection);}}>Delete Karianna</button>
+		<button on:click={()=> {selection.add(data[3]); selection = new Set(selection);}}>Add Karianne</button>
+		<button on:click={()=> {selection.delete(data[3]); selection = new Set(selection);}}>Delete Karianne</button>
 		<button on:click={()=> {selection = new Set(data);}}>All</button>
 		<button on:click={()=> {selection = new Set();}}>None</button>
 		<Table let:row data={data} columnFooters>
