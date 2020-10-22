@@ -9,6 +9,11 @@
     "prepack": "rollup -c",
     "demo": "rollup -c demo/rollup.config.js -w"
   },
+  "keywords": [
+	  "svelte",
+	  "table",
+	  "structure"
+  ],
   "author": "fmdm",
   "license": "ISC",
   "devDependencies": {

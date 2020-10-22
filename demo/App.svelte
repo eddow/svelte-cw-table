@@ -1,8 +1,9 @@
 <script lang="ts">
-	import {Table, Column, Selection} from '../src'
+	import {Table, Column, Selection, StringContentFilter} from '../src'
 	let promise = fetch('https://jsonplaceholder.typicode.com/users')
 			.then(response => response.json()),
-		selection = new Set<any>();
+		selection = new Set<any>(),
+		displayedData: any[] = [];
 </script>
 <template>
 	{#await promise then data}
@@ -10,15 +11,14 @@
 		<button on:click={()=> {selection.delete(data[3]); selection = new Set(selection);}}>Delete Karianne</button>
 		<button on:click={()=> {selection = new Set(data);}}>All</button>
 		<button on:click={()=> {selection = new Set();}}>None</button>
-		<Table let:row data={data} columnFooters>
+		<Table key="username" data={data} columnFooters columnFilters bind:displayedData>
 			<Selection bind:selection />
-			<Column>
-				<th scope="row">{row.username}</th>
-				<td slot="footer">{selection.size} on {data.length} users</td>
+			<Column prop="username" headers>
+				<td slot="footer">{selection.size} on {data.length} users selected</td>
 			</Column>
-			<!--Column prop="name" let:value-->
 			<Column prop="name">
-				<!--input value={$value} /-->
+				<td slot="filter"><StringContentFilter /></td>
+				<td slot="footer">{displayedData.length} on {data.length} users displayed</td>
 			</Column>
 			<Column prop="email" />
 		</Table>

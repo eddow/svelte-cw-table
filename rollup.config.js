@@ -7,7 +7,7 @@ import typescript from '@rollup/plugin-typescript'
 import pkg from './package.json'
 
 const production = !process.env.ROLLUP_WATCH;
-
+// TODO decoration metadata
 export default {
 	input: 'src/index.js',
 	output: [{
