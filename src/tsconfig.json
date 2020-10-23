@@ -5,8 +5,10 @@
 	  "noImplicitAny": false,
 	  "moduleResolution": "node",
 	  "experimentalDecorators": true,
+	  "declaration": true,
+	  "declarationMap": true,
 	  "emitDecoratorMetadata": true,
-	  "target": "ES6",
+	  "target": "es6",
 	  "lib": [
 		"dom",
 		"es5",

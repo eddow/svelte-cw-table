@@ -35,11 +35,11 @@ Every `<tr>` has an attribute `row-id` containing the id of the row : its key el
 
 - `data: any[]` is an array of rows. Each row is an object whose properties will be accessed.
 - `key: string` is the name of the property who will be used as a key for the row (`'id'`, `'_id'`, ...). If none is specified, the index of the element will be used.
-- `columnFilters: boolean` (default: false) determine wether the filters of the columns are displayed
 - `columnHeaders: boolean` (default: true) determine wether the headers of the columns are displayed
+- `columnFilters: boolean` (default: false) determine wether the filters of the columns are displayed
 - `columnFooters: boolean` (default: false) determine wether the footers of the columns are displayed
 - `filters: Map<any, (row: any)=> boolean>` is the list or [filters](#filters)
-- `displayedData: any[]`
+- `displayedData: any[]` if used is to be initialised to `[]` and bound to retrieve the filtered & sorted data
 - `tr$...` attributes will be forwarded on the `<tr>` tags (without the `tr$` prefix)
 
 ### `let`-s
@@ -52,7 +52,7 @@ Each column has three slots.
 - The default one who specifies the content of each data cell. If none is specified, the attribute `prop` will be used to retrieve the value of the cell: equivalent to `row[prop]`.
 - The `"header"` and `"footer"` ones respectively describe what to display in the header and the footer of the column (depending on `Table`' `columnHeaders` and `columnFooters` values).
 If no header slot is specified, the header will be the `title` property and - if still empty - the `prop` property.
-- The `"filter"` slot is displayed above the `"header"` one
+- The `"filter"` slot is displayed below the `"header"` one
 
 All the slots have to be a table definition or header (`td` or `th`).
 
@@ -74,11 +74,34 @@ Note: rows filtered out won't be deselected.
 
 Use `bind:selection={selection}` to keep the variable `selection` a `Set` of the selected rows (the objects, not the keys)
 
+## Contexts
+
+Custom user-controls to use in the table can be done and will retrieve contexts to interact with the table.
+These contexts can be retrieved with the functions `getXxxCtx` that are exported by the library.
+
+### Table Context
+
+Retrieved with `getTblCtx()`, this context defines :
+- `setFilter: (key: any, filter: (row: any)=> boolean)=> void` see [filters](#column-wise-globals)
+- `data: Readable<any[]>` a readable store giving the whole data (before filtering/sorting)
+
+### Row context
+
+Retrieved with `getRowCtx()`,
+
+### Column Context
+
+Retrieved with `getClmnCtx()`, this context defines :
+- `setFilter: (filter: (value: any)=> boolean)=> void` see [filters](#column-wise)
+- If the column has a defined `prop`, `value: Writable<any>` a writable store giving the value of the cell
+
 ## Filters
 
 Filters can either be specified globally (`income > expenses`) or column-wise (`age > 18`). If globally, they can be specified programatically from an external control, and if column-wise, they can be included in the column, in the `"filter"` (indeed, even `"header"` or "`footer"`) slot.
 
 If a filter is given with a false-ish value, it is simply removed.
+
+A table that uses filters *have to* have a `key` defined.
 
 ### Globally
 
@@ -99,7 +122,7 @@ import {getClmnCtx, ...} from "svelte-cw-table"
 ...
 const setFilter = getClmnCtx().setFilter;
 ...
-$: setFilter((value: any)=> value > minimum)
+$: setFilter((value: any)=> [ ... ])
 ...
 ```
 A more complete example can be seen [here](https://github.com/eddow/svelte-cw-table/tree/master/src/filters/StringContent.svelte)
@@ -115,6 +138,20 @@ Even if only one filter can be used by column, filters can be made more complex.
 	</label>
 	<StringContentFilter caseSensitive={caseSensitive} />
 </td>
+```
+
+### Column-wise globals
+
+A really specific case of custom controls for, let's say, a parent class intended to be used in several tables on children classes in the table structure can be used. For this, instead of using the `setFilter` of the column-context, one can use the `setFilter` of the table-context.
+
+```ts
+import {getTblCtx, ...} from "svelte-cw-table"
+...
+const setFilter = getTblCtx().setFilter;
+const filterKey = {};
+...
+$: setFilter(filterKey, (row: any)=> [ ... ])
+...
 ```
 
 ### Pre-defined filters

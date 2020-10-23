@@ -5,6 +5,6 @@ import Selection from './Selection.svelte'
 export {Table, Column, Selection};
 
 import StringContentFilter from './filters/StringContent.svelte'
-import {getClmnCtx} from './table'
+import {getClmnCtx, getTblCtx} from './table'
 
-export {getClmnCtx, StringContentFilter}
+export {getClmnCtx, getTblCtx, StringContentFilter}

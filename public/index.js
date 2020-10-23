@@ -1,5 +1,3 @@
-
-(function(l, r) { if (l.getElementById('livereloadscript')) return; r = l.createElement('script'); r.async = 1; r.src = '//' + (window.location.host || 'localhost').split(':')[0] + ':35729/livereload.js?snipver=1'; r.id = 'livereloadscript'; l.getElementsByTagName('head')[0].appendChild(r) })(window.document);
 var app = (function () {
     'use strict';
 
@@ -35,6 +33,21 @@ var app = (function () {
     }
     function is_empty(obj) {
         return Object.keys(obj).length === 0;
+    }
+    function validate_store(store, name) {
+        if (store != null && typeof store.subscribe !== 'function') {
+            throw new Error(`'${name}' is not a store with a 'subscribe' method`);
+        }
+    }
+    function subscribe(store, ...callbacks) {
+        if (store == null) {
+            return noop;
+        }
+        const unsub = store.subscribe(...callbacks);
+        return unsub.unsubscribe ? () => unsub.unsubscribe() : unsub;
+    }
+    function component_subscribe(component, store, callback) {
+        component.$$.on_destroy.push(subscribe(store, callback));
     }
     function create_slot(definition, ctx, $$scope, fn) {
         if (definition) {
@@ -145,6 +158,37 @@ var app = (function () {
         const e = document.createEvent('CustomEvent');
         e.initCustomEvent(type, false, false, detail);
         return e;
+    }
+    class HtmlTag {
+        constructor(anchor = null) {
+            this.a = anchor;
+            this.e = this.n = null;
+        }
+        m(html, target, anchor = null) {
+            if (!this.e) {
+                this.e = element(target.nodeName);
+                this.t = target;
+                this.h(html);
+            }
+            this.i(anchor);
+        }
+        h(html) {
+            this.e.innerHTML = html;
+            this.n = Array.from(this.e.childNodes);
+        }
+        i(anchor) {
+            for (let i = 0; i < this.n.length; i += 1) {
+                insert(this.t, this.n[i], anchor);
+            }
+        }
+        p(html) {
+            this.d();
+            this.h(html);
+            this.i(this.a);
+        }
+        d() {
+            this.n.forEach(detach);
+        }
     }
 
     let current_component;
@@ -688,6 +732,8 @@ var app = (function () {
     })(specialRow || (specialRow = {}));
     function setTblCtx(c) { setContext(tableContextKey, c); }
     function getTblCtx() { return getContext(tableContextKey); }
+    function setRowCtx(c) { setContext(rowContextKey, c); }
+    function getRowCtx() { return getContext(rowContextKey); }
     function setClmnCtx(c) { setContext(columnContextKey, c); }
     function getClmnCtx() { return getContext(columnContextKey); }
 
@@ -757,6 +803,68 @@ var app = (function () {
       }
     }
 
+    const subscriber_queue = [];
+    /**
+     * Creates a `Readable` store that allows reading by subscription.
+     * @param value initial value
+     * @param {StartStopNotifier}start start and stop notifications for subscriptions
+     */
+    function readable(value, start) {
+        return {
+            subscribe: writable(value, start).subscribe
+        };
+    }
+    /**
+     * Create a `Writable` store that allows both updating and reading by subscription.
+     * @param {*=}value initial value
+     * @param {StartStopNotifier=}start start and stop notifications for subscriptions
+     */
+    function writable(value, start = noop) {
+        let stop;
+        const subscribers = [];
+        function set(new_value) {
+            if (safe_not_equal(value, new_value)) {
+                value = new_value;
+                if (stop) { // store is ready
+                    const run_queue = !subscriber_queue.length;
+                    for (let i = 0; i < subscribers.length; i += 1) {
+                        const s = subscribers[i];
+                        s[1]();
+                        subscriber_queue.push(s, value);
+                    }
+                    if (run_queue) {
+                        for (let i = 0; i < subscriber_queue.length; i += 2) {
+                            subscriber_queue[i][0](subscriber_queue[i + 1]);
+                        }
+                        subscriber_queue.length = 0;
+                    }
+                }
+            }
+        }
+        function update(fn) {
+            set(fn(value));
+        }
+        function subscribe(run, invalidate = noop) {
+            const subscriber = [run, invalidate];
+            subscribers.push(subscriber);
+            if (subscribers.length === 1) {
+                stop = start(set) || noop;
+            }
+            run(value);
+            return () => {
+                const index = subscribers.indexOf(subscriber);
+                if (index !== -1) {
+                    subscribers.splice(index, 1);
+                }
+                if (subscribers.length === 0) {
+                    stop();
+                    stop = null;
+                }
+            };
+        }
+        return { set, update, subscribe };
+    }
+
     /* src\TableRow.svelte generated by Svelte v3.29.0 */
     const file = "src\\TableRow.svelte";
 
@@ -785,7 +893,7 @@ var app = (function () {
     			tr = element("tr");
     			if (default_slot) default_slot.c();
     			set_attributes(tr, tr_data);
-    			add_location(tr, file, 10, 1, 294);
+    			add_location(tr, file, 14, 1, 387);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
@@ -852,7 +960,13 @@ var app = (function () {
     	let { row } = $$props;
     	let { id } = $$props;
     	let { use = [] } = $$props;
-    	setContext(rowContextKey, row);
+    	let setRowData;
+
+    	setRowCtx({
+    		row: readable(row, set => {
+    			$$invalidate(6, setRowData = set);
+    		})
+    	});
 
     	$$self.$$set = $$new_props => {
     		$$invalidate(2, $$props = assign(assign({}, $$props), exclude_internal_props($$new_props)));
@@ -863,13 +977,14 @@ var app = (function () {
     	};
 
     	$$self.$capture_state = () => ({
-    		setContext,
-    		rowContextKey,
+    		setRowCtx,
     		exclude,
     		useActions,
+    		readable,
     		row,
     		id,
-    		use
+    		use,
+    		setRowData
     	});
 
     	$$self.$inject_state = $$new_props => {
@@ -877,11 +992,18 @@ var app = (function () {
     		if ("row" in $$props) $$invalidate(3, row = $$new_props.row);
     		if ("id" in $$props) $$invalidate(0, id = $$new_props.id);
     		if ("use" in $$props) $$invalidate(1, use = $$new_props.use);
+    		if ("setRowData" in $$props) $$invalidate(6, setRowData = $$new_props.setRowData);
     	};
 
     	if ($$props && "$$inject" in $$props) {
     		$$self.$inject_state($$props.$$inject);
     	}
+
+    	$$self.$$.update = () => {
+    		if ($$self.$$.dirty & /*setRowData, row*/ 72) {
+    			 setRowData && setRowData(row);
+    		}
+    	};
 
     	$$props = exclude_internal_props($$props);
     	return [id, use, $$props, row, $$scope, slots];
@@ -954,34 +1076,34 @@ var app = (function () {
 
     /* src\Table.svelte generated by Svelte v3.29.0 */
 
-    const { Map: Map_1 } = globals;
+    const { Map: Map_1, console: console_1 } = globals;
     const file$1 = "src\\Table.svelte";
     const get_default_slot_changes_3 = dirty => ({});
     const get_default_slot_context_3 = ctx => ({ row: specialRow.footer });
     const get_default_slot_changes_2 = dirty => ({ row: dirty & /*displayedData*/ 2 });
-    const get_default_slot_context_2 = ctx => ({ row: /*row*/ ctx[12] });
+    const get_default_slot_context_2 = ctx => ({ row: /*row*/ ctx[13] });
 
     function get_each_context(ctx, list, i) {
     	const child_ctx = ctx.slice();
-    	child_ctx[12] = list[i];
-    	child_ctx[14] = i;
+    	child_ctx[13] = list[i];
+    	child_ctx[15] = i;
     	return child_ctx;
     }
 
     const get_default_slot_changes_1 = dirty => ({});
-    const get_default_slot_context_1 = ctx => ({ row: specialRow.header });
+    const get_default_slot_context_1 = ctx => ({ row: specialRow.filter });
     const get_default_slot_changes = dirty => ({});
-    const get_default_slot_context = ctx => ({ row: specialRow.filter });
+    const get_default_slot_context = ctx => ({ row: specialRow.header });
 
-    // (29:2) {#if columnFilters}
+    // (33:2) {#if columnHeaders}
     function create_if_block_2(ctx) {
     	let thead;
     	let tablerow;
     	let current;
 
     	const tablerow_spread_levels = [
-    		{ id: "filter" },
-    		{ row: specialRow.filter },
+    		{ id: "header" },
+    		{ row: specialRow.header },
     		prefixFilter(/*$$props*/ ctx[7], "tr$")
     	];
 
@@ -1000,7 +1122,7 @@ var app = (function () {
     		c: function create() {
     			thead = element("thead");
     			create_component(tablerow.$$.fragment);
-    			add_location(thead, file$1, 29, 3, 960);
+    			add_location(thead, file$1, 33, 3, 1170);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, thead, anchor);
@@ -1011,7 +1133,7 @@ var app = (function () {
     			const tablerow_changes = (dirty & /*specialRow, prefixFilter, $$props*/ 128)
     			? get_spread_update(tablerow_spread_levels, [
     					tablerow_spread_levels[0],
-    					dirty & /*specialRow*/ 0 && { row: specialRow.filter },
+    					dirty & /*specialRow*/ 0 && { row: specialRow.header },
     					dirty & /*prefixFilter, $$props*/ 128 && get_spread_object(prefixFilter(/*$$props*/ ctx[7], "tr$"))
     				])
     			: {};
@@ -1041,14 +1163,14 @@ var app = (function () {
     		block,
     		id: create_if_block_2.name,
     		type: "if",
-    		source: "(29:2) {#if columnFilters}",
+    		source: "(33:2) {#if columnHeaders}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (31:4) <TableRow id="filter" row={specialRow.filter} {...prefixFilter($$props, 'tr$')}>
+    // (35:4) <TableRow id="header" row={specialRow.header} {...prefixFilter($$props, 'tr$')}>
     function create_default_slot_3(ctx) {
     	let current;
     	const default_slot_template = /*#slots*/ ctx[10].default;
@@ -1090,22 +1212,22 @@ var app = (function () {
     		block,
     		id: create_default_slot_3.name,
     		type: "slot",
-    		source: "(31:4) <TableRow id=\\\"filter\\\" row={specialRow.filter} {...prefixFilter($$props, 'tr$')}>",
+    		source: "(35:4) <TableRow id=\\\"header\\\" row={specialRow.header} {...prefixFilter($$props, 'tr$')}>",
     		ctx
     	});
 
     	return block;
     }
 
-    // (36:2) {#if columnHeaders}
+    // (40:2) {#if columnFilters}
     function create_if_block_1(ctx) {
     	let thead;
     	let tablerow;
     	let current;
 
     	const tablerow_spread_levels = [
-    		{ id: "header" },
-    		{ row: specialRow.header },
+    		{ id: "filter" },
+    		{ row: specialRow.filter },
     		prefixFilter(/*$$props*/ ctx[7], "tr$")
     	];
 
@@ -1124,7 +1246,7 @@ var app = (function () {
     		c: function create() {
     			thead = element("thead");
     			create_component(tablerow.$$.fragment);
-    			add_location(thead, file$1, 36, 3, 1159);
+    			add_location(thead, file$1, 40, 3, 1369);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, thead, anchor);
@@ -1135,7 +1257,7 @@ var app = (function () {
     			const tablerow_changes = (dirty & /*specialRow, prefixFilter, $$props*/ 128)
     			? get_spread_update(tablerow_spread_levels, [
     					tablerow_spread_levels[0],
-    					dirty & /*specialRow*/ 0 && { row: specialRow.header },
+    					dirty & /*specialRow*/ 0 && { row: specialRow.filter },
     					dirty & /*prefixFilter, $$props*/ 128 && get_spread_object(prefixFilter(/*$$props*/ ctx[7], "tr$"))
     				])
     			: {};
@@ -1165,14 +1287,14 @@ var app = (function () {
     		block,
     		id: create_if_block_1.name,
     		type: "if",
-    		source: "(36:2) {#if columnHeaders}",
+    		source: "(40:2) {#if columnFilters}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (38:4) <TableRow id="header" row={specialRow.header} {...prefixFilter($$props, 'tr$')}>
+    // (42:4) <TableRow id="filter" row={specialRow.filter} {...prefixFilter($$props, 'tr$')}>
     function create_default_slot_2(ctx) {
     	let current;
     	const default_slot_template = /*#slots*/ ctx[10].default;
@@ -1214,14 +1336,14 @@ var app = (function () {
     		block,
     		id: create_default_slot_2.name,
     		type: "slot",
-    		source: "(38:4) <TableRow id=\\\"header\\\" row={specialRow.header} {...prefixFilter($$props, 'tr$')}>",
+    		source: "(42:4) <TableRow id=\\\"filter\\\" row={specialRow.filter} {...prefixFilter($$props, 'tr$')}>",
     		ctx
     	});
 
     	return block;
     }
 
-    // (45:4) <TableRow id={rowId(row, ndx)} row={row} {...prefixFilter($$props, 'tr$')}>
+    // (49:4) <TableRow id={rowId(row, ndx)} row={row} {...prefixFilter($$props, 'tr$')}>
     function create_default_slot_1(ctx) {
     	let t;
     	let current;
@@ -1267,14 +1389,14 @@ var app = (function () {
     		block,
     		id: create_default_slot_1.name,
     		type: "slot",
-    		source: "(45:4) <TableRow id={rowId(row, ndx)} row={row} {...prefixFilter($$props, 'tr$')}>",
+    		source: "(49:4) <TableRow id={rowId(row, ndx)} row={row} {...prefixFilter($$props, 'tr$')}>",
     		ctx
     	});
 
     	return block;
     }
 
-    // (44:3) {#each displayedData as row, ndx (rowId(row, ndx))}
+    // (48:3) {#each displayedData as row, ndx (rowId(row, ndx))}
     function create_each_block(key_2, ctx) {
     	let first;
     	let tablerow;
@@ -1282,9 +1404,9 @@ var app = (function () {
 
     	const tablerow_spread_levels = [
     		{
-    			id: /*rowId*/ ctx[6](/*row*/ ctx[12], /*ndx*/ ctx[14])
+    			id: /*rowId*/ ctx[6](/*row*/ ctx[13], /*ndx*/ ctx[15])
     		},
-    		{ row: /*row*/ ctx[12] },
+    		{ row: /*row*/ ctx[13] },
     		prefixFilter(/*$$props*/ ctx[7], "tr$")
     	];
 
@@ -1316,9 +1438,9 @@ var app = (function () {
     			const tablerow_changes = (dirty & /*rowId, displayedData, prefixFilter, $$props*/ 194)
     			? get_spread_update(tablerow_spread_levels, [
     					dirty & /*rowId, displayedData*/ 66 && {
-    						id: /*rowId*/ ctx[6](/*row*/ ctx[12], /*ndx*/ ctx[14])
+    						id: /*rowId*/ ctx[6](/*row*/ ctx[13], /*ndx*/ ctx[15])
     					},
-    					dirty & /*displayedData*/ 2 && { row: /*row*/ ctx[12] },
+    					dirty & /*displayedData*/ 2 && { row: /*row*/ ctx[13] },
     					dirty & /*prefixFilter, $$props*/ 128 && get_spread_object(prefixFilter(/*$$props*/ ctx[7], "tr$"))
     				])
     			: {};
@@ -1348,14 +1470,14 @@ var app = (function () {
     		block,
     		id: create_each_block.name,
     		type: "each",
-    		source: "(44:3) {#each displayedData as row, ndx (rowId(row, ndx))}",
+    		source: "(48:3) {#each displayedData as row, ndx (rowId(row, ndx))}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (50:2) {#if columnFooters}
+    // (54:2) {#if columnFooters}
     function create_if_block(ctx) {
     	let tfoot;
     	let tablerow;
@@ -1382,7 +1504,7 @@ var app = (function () {
     		c: function create() {
     			tfoot = element("tfoot");
     			create_component(tablerow.$$.fragment);
-    			add_location(tfoot, file$1, 50, 3, 1572);
+    			add_location(tfoot, file$1, 54, 3, 1782);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, tfoot, anchor);
@@ -1423,14 +1545,14 @@ var app = (function () {
     		block,
     		id: create_if_block.name,
     		type: "if",
-    		source: "(50:2) {#if columnFooters}",
+    		source: "(54:2) {#if columnFooters}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (52:4) <TableRow id="footer" row={specialRow.footer} {...prefixFilter($$props, 'tr$')}>
+    // (56:4) <TableRow id="footer" row={specialRow.footer} {...prefixFilter($$props, 'tr$')}>
     function create_default_slot(ctx) {
     	let current;
     	const default_slot_template = /*#slots*/ ctx[10].default;
@@ -1472,7 +1594,7 @@ var app = (function () {
     		block,
     		id: create_default_slot.name,
     		type: "slot",
-    		source: "(52:4) <TableRow id=\\\"footer\\\" row={specialRow.footer} {...prefixFilter($$props, 'tr$')}>",
+    		source: "(56:4) <TableRow id=\\\"footer\\\" row={specialRow.footer} {...prefixFilter($$props, 'tr$')}>",
     		ctx
     	});
 
@@ -1494,11 +1616,11 @@ var app = (function () {
     	let current;
     	let mounted;
     	let dispose;
-    	let if_block0 = /*columnFilters*/ ctx[2] && create_if_block_2(ctx);
-    	let if_block1 = /*columnHeaders*/ ctx[3] && create_if_block_1(ctx);
+    	let if_block0 = /*columnHeaders*/ ctx[3] && create_if_block_2(ctx);
+    	let if_block1 = /*columnFilters*/ ctx[2] && create_if_block_1(ctx);
     	let each_value = /*displayedData*/ ctx[1];
     	validate_each_argument(each_value);
-    	const get_key = ctx => /*rowId*/ ctx[6](/*row*/ ctx[12], /*ndx*/ ctx[14]);
+    	const get_key = ctx => /*rowId*/ ctx[6](/*row*/ ctx[13], /*ndx*/ ctx[15]);
     	validate_each_keys(ctx, each_value, get_each_context, get_key);
 
     	for (let i = 0; i < each_value.length; i += 1) {
@@ -1532,9 +1654,9 @@ var app = (function () {
 
     			t4 = space();
     			if (if_block2) if_block2.c();
-    			add_location(tbody, file$1, 42, 2, 1334);
+    			add_location(tbody, file$1, 46, 2, 1544);
     			set_attributes(table, table_data);
-    			add_location(table, file$1, 27, 1, 857);
+    			add_location(table, file$1, 31, 1, 1067);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
@@ -1565,11 +1687,11 @@ var app = (function () {
     		p: function update(ctx, [dirty]) {
     			if ((!current || dirty & /*filters*/ 1) && t0_value !== (t0_value = /*filters*/ ctx[0].size + "")) set_data_dev(t0, t0_value);
 
-    			if (/*columnFilters*/ ctx[2]) {
+    			if (/*columnHeaders*/ ctx[3]) {
     				if (if_block0) {
     					if_block0.p(ctx, dirty);
 
-    					if (dirty & /*columnFilters*/ 4) {
+    					if (dirty & /*columnHeaders*/ 8) {
     						transition_in(if_block0, 1);
     					}
     				} else {
@@ -1588,11 +1710,11 @@ var app = (function () {
     				check_outros();
     			}
 
-    			if (/*columnHeaders*/ ctx[3]) {
+    			if (/*columnFilters*/ ctx[2]) {
     				if (if_block1) {
     					if_block1.p(ctx, dirty);
 
-    					if (dirty & /*columnHeaders*/ 8) {
+    					if (dirty & /*columnFilters*/ 4) {
     						transition_in(if_block1, 1);
     					}
     				} else {
@@ -1710,9 +1832,12 @@ var app = (function () {
     	let { columnFooters = false } = $$props;
     	let { use = [] } = $$props;
     	let { filters = new Map() } = $$props;
+    	let setRawData;
 
     	setTblCtx({
-    		getData: () => data,
+    		data: readable(data, set => {
+    			$$invalidate(12, setRawData = set);
+    		}),
     		setFilter(key, filter) {
     			filters[filter ? "set" : "delete"](key, filter);
     			$$invalidate(0, filters = new Map(filters));
@@ -1745,6 +1870,7 @@ var app = (function () {
     		exclude,
     		prefixFilter,
     		useActions,
+    		readable,
     		data,
     		key,
     		columnFilters,
@@ -1752,6 +1878,7 @@ var app = (function () {
     		columnFooters,
     		use,
     		filters,
+    		setRawData,
     		rowId,
     		displayedData
     	});
@@ -1765,6 +1892,7 @@ var app = (function () {
     		if ("columnFooters" in $$props) $$invalidate(4, columnFooters = $$new_props.columnFooters);
     		if ("use" in $$props) $$invalidate(5, use = $$new_props.use);
     		if ("filters" in $$props) $$invalidate(0, filters = $$new_props.filters);
+    		if ("setRawData" in $$props) $$invalidate(12, setRawData = $$new_props.setRawData);
     		if ("displayedData" in $$props) $$invalidate(1, displayedData = $$new_props.displayedData);
     	};
 
@@ -1773,6 +1901,14 @@ var app = (function () {
     	}
 
     	$$self.$$.update = () => {
+    		if ($$self.$$.dirty & /*setRawData, data*/ 4352) {
+    			 setRawData && setRawData(data);
+    		}
+
+    		if ($$self.$$.dirty & /*key, filters*/ 513) {
+    			 console.assert(key || !filters.size, "A table with `filters` needs a `key`");
+    		}
+
     		if ($$self.$$.dirty & /*data, filters*/ 257) {
     			 $$invalidate(1, displayedData = data.filter(row => Array.from(filters.values()).every(filter => filter(row))));
     		}
@@ -1822,11 +1958,11 @@ var app = (function () {
     		const props = options.props || {};
 
     		if (/*data*/ ctx[8] === undefined && !("data" in props)) {
-    			console.warn("<Table> was created without expected prop 'data'");
+    			console_1.warn("<Table> was created without expected prop 'data'");
     		}
 
     		if (/*displayedData*/ ctx[1] === undefined && !("displayedData" in props)) {
-    			console.warn("<Table> was created without expected prop 'displayedData'");
+    			console_1.warn("<Table> was created without expected prop 'displayedData'");
     		}
     	}
 
@@ -1897,7 +2033,7 @@ var app = (function () {
 
     /* src\Column.svelte generated by Svelte v3.29.0 */
 
-    const { console: console_1 } = globals;
+    const { console: console_1$1 } = globals;
     const file$2 = "src\\Column.svelte";
     const get_footer_slot_changes = dirty => ({});
     const get_footer_slot_context = ctx => ({});
@@ -1906,11 +2042,11 @@ var app = (function () {
     const get_filter_slot_changes = dirty => ({});
     const get_filter_slot_context = ctx => ({});
 
-    // (34:1) {:else}
+    // (42:1) {:else}
     function create_else_block(ctx) {
     	let current;
-    	const default_slot_template = /*#slots*/ ctx[5].default;
-    	const default_slot = create_slot(default_slot_template, ctx, /*$$scope*/ ctx[4], null);
+    	const default_slot_template = /*#slots*/ ctx[7].default;
+    	const default_slot = create_slot(default_slot_template, ctx, /*$$scope*/ ctx[6], null);
     	const default_slot_or_fallback = default_slot || fallback_block_3(ctx);
 
     	const block = {
@@ -1926,11 +2062,11 @@ var app = (function () {
     		},
     		p: function update(ctx, dirty) {
     			if (default_slot) {
-    				if (default_slot.p && dirty & /*$$scope*/ 16) {
-    					update_slot(default_slot, default_slot_template, ctx, /*$$scope*/ ctx[4], dirty, null, null);
+    				if (default_slot.p && dirty & /*$$scope*/ 64) {
+    					update_slot(default_slot, default_slot_template, ctx, /*$$scope*/ ctx[6], dirty, null, null);
     				}
     			} else {
-    				if (default_slot_or_fallback && default_slot_or_fallback.p && dirty & /*prop, headers*/ 5) {
+    				if (default_slot_or_fallback && default_slot_or_fallback.p && dirty & /*$value, headers*/ 20) {
     					default_slot_or_fallback.p(ctx, dirty);
     				}
     			}
@@ -1953,18 +2089,18 @@ var app = (function () {
     		block,
     		id: create_else_block.name,
     		type: "else",
-    		source: "(34:1) {:else}",
+    		source: "(42:1) {:else}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (30:37) 
+    // (38:37) 
     function create_if_block_3(ctx) {
     	let current;
-    	const footer_slot_template = /*#slots*/ ctx[5].footer;
-    	const footer_slot = create_slot(footer_slot_template, ctx, /*$$scope*/ ctx[4], get_footer_slot_context);
+    	const footer_slot_template = /*#slots*/ ctx[7].footer;
+    	const footer_slot = create_slot(footer_slot_template, ctx, /*$$scope*/ ctx[6], get_footer_slot_context);
     	const footer_slot_or_fallback = footer_slot || fallback_block_2(ctx);
 
     	const block = {
@@ -1980,8 +2116,8 @@ var app = (function () {
     		},
     		p: function update(ctx, dirty) {
     			if (footer_slot) {
-    				if (footer_slot.p && dirty & /*$$scope*/ 16) {
-    					update_slot(footer_slot, footer_slot_template, ctx, /*$$scope*/ ctx[4], dirty, get_footer_slot_changes, get_footer_slot_context);
+    				if (footer_slot.p && dirty & /*$$scope*/ 64) {
+    					update_slot(footer_slot, footer_slot_template, ctx, /*$$scope*/ ctx[6], dirty, get_footer_slot_changes, get_footer_slot_context);
     				}
     			}
     		},
@@ -2003,18 +2139,18 @@ var app = (function () {
     		block,
     		id: create_if_block_3.name,
     		type: "if",
-    		source: "(30:37) ",
+    		source: "(38:37) ",
     		ctx
     	});
 
     	return block;
     }
 
-    // (26:37) 
+    // (34:37) 
     function create_if_block_2$1(ctx) {
     	let current;
-    	const header_slot_template = /*#slots*/ ctx[5].header;
-    	const header_slot = create_slot(header_slot_template, ctx, /*$$scope*/ ctx[4], get_header_slot_context);
+    	const header_slot_template = /*#slots*/ ctx[7].header;
+    	const header_slot = create_slot(header_slot_template, ctx, /*$$scope*/ ctx[6], get_header_slot_context);
     	const header_slot_or_fallback = header_slot || fallback_block_1(ctx);
 
     	const block = {
@@ -2030,8 +2166,8 @@ var app = (function () {
     		},
     		p: function update(ctx, dirty) {
     			if (header_slot) {
-    				if (header_slot.p && dirty & /*$$scope*/ 16) {
-    					update_slot(header_slot, header_slot_template, ctx, /*$$scope*/ ctx[4], dirty, get_header_slot_changes, get_header_slot_context);
+    				if (header_slot.p && dirty & /*$$scope*/ 64) {
+    					update_slot(header_slot, header_slot_template, ctx, /*$$scope*/ ctx[6], dirty, get_header_slot_changes, get_header_slot_context);
     				}
     			} else {
     				if (header_slot_or_fallback && header_slot_or_fallback.p && dirty & /*title, prop*/ 3) {
@@ -2057,18 +2193,18 @@ var app = (function () {
     		block,
     		id: create_if_block_2$1.name,
     		type: "if",
-    		source: "(26:37) ",
+    		source: "(34:37) ",
     		ctx
     	});
 
     	return block;
     }
 
-    // (22:37) 
+    // (30:37) 
     function create_if_block_1$1(ctx) {
     	let current;
-    	const filter_slot_template = /*#slots*/ ctx[5].filter;
-    	const filter_slot = create_slot(filter_slot_template, ctx, /*$$scope*/ ctx[4], get_filter_slot_context);
+    	const filter_slot_template = /*#slots*/ ctx[7].filter;
+    	const filter_slot = create_slot(filter_slot_template, ctx, /*$$scope*/ ctx[6], get_filter_slot_context);
     	const filter_slot_or_fallback = filter_slot || fallback_block(ctx);
 
     	const block = {
@@ -2084,8 +2220,8 @@ var app = (function () {
     		},
     		p: function update(ctx, dirty) {
     			if (filter_slot) {
-    				if (filter_slot.p && dirty & /*$$scope*/ 16) {
-    					update_slot(filter_slot, filter_slot_template, ctx, /*$$scope*/ ctx[4], dirty, get_filter_slot_changes, get_filter_slot_context);
+    				if (filter_slot.p && dirty & /*$$scope*/ 64) {
+    					update_slot(filter_slot, filter_slot_template, ctx, /*$$scope*/ ctx[6], dirty, get_filter_slot_changes, get_filter_slot_context);
     				}
     			}
     		},
@@ -2107,14 +2243,14 @@ var app = (function () {
     		block,
     		id: create_if_block_1$1.name,
     		type: "if",
-    		source: "(22:37) ",
+    		source: "(30:37) ",
     		ctx
     	});
 
     	return block;
     }
 
-    // (20:1) {#if !row}
+    // (28:1) {#if !row}
     function create_if_block$1(ctx) {
     	let th;
 
@@ -2122,7 +2258,7 @@ var app = (function () {
     		c: function create() {
     			th = element("th");
     			th.textContent = "`Column` is to be used in a `Table` only";
-    			add_location(th, file$2, 20, 2, 748);
+    			add_location(th, file$2, 28, 2, 999);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, th, anchor);
@@ -2139,31 +2275,30 @@ var app = (function () {
     		block,
     		id: create_if_block$1.name,
     		type: "if",
-    		source: "(20:1) {#if !row}",
+    		source: "(28:1) {#if !row}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (38:3) {:else}
+    // (46:3) {:else}
     function create_else_block_1(ctx) {
     	let td;
-    	let t_value = /*row*/ ctx[3][/*prop*/ ctx[0]] + "";
     	let t;
 
     	const block = {
     		c: function create() {
     			td = element("td");
-    			t = text(t_value);
-    			add_location(td, file$2, 38, 4, 1188);
+    			t = text(/*$value*/ ctx[4]);
+    			add_location(td, file$2, 46, 4, 1436);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, td, anchor);
     			append_dev(td, t);
     		},
     		p: function update(ctx, dirty) {
-    			if (dirty & /*prop*/ 1 && t_value !== (t_value = /*row*/ ctx[3][/*prop*/ ctx[0]] + "")) set_data_dev(t, t_value);
+    			if (dirty & /*$value*/ 16) set_data_dev(t, /*$value*/ ctx[4]);
     		},
     		d: function destroy(detaching) {
     			if (detaching) detach_dev(td);
@@ -2174,32 +2309,31 @@ var app = (function () {
     		block,
     		id: create_else_block_1.name,
     		type: "else",
-    		source: "(38:3) {:else}",
+    		source: "(46:3) {:else}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (36:3) {#if headers}
+    // (44:3) {#if headers}
     function create_if_block_4(ctx) {
     	let th;
-    	let t_value = /*row*/ ctx[3][/*prop*/ ctx[0]] + "";
     	let t;
 
     	const block = {
     		c: function create() {
     			th = element("th");
-    			t = text(t_value);
+    			t = text(/*$value*/ ctx[4]);
     			attr_dev(th, "scope", "row");
-    			add_location(th, file$2, 36, 4, 1138);
+    			add_location(th, file$2, 44, 4, 1389);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, th, anchor);
     			append_dev(th, t);
     		},
     		p: function update(ctx, dirty) {
-    			if (dirty & /*prop*/ 1 && t_value !== (t_value = /*row*/ ctx[3][/*prop*/ ctx[0]] + "")) set_data_dev(t, t_value);
+    			if (dirty & /*$value*/ 16) set_data_dev(t, /*$value*/ ctx[4]);
     		},
     		d: function destroy(detaching) {
     			if (detaching) detach_dev(th);
@@ -2210,14 +2344,14 @@ var app = (function () {
     		block,
     		id: create_if_block_4.name,
     		type: "if",
-    		source: "(36:3) {#if headers}",
+    		source: "(44:3) {#if headers}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (35:8)      
+    // (43:8)      
     function fallback_block_3(ctx) {
     	let if_block_anchor;
 
@@ -2261,14 +2395,14 @@ var app = (function () {
     		block,
     		id: fallback_block_3.name,
     		type: "fallback",
-    		source: "(35:8)      ",
+    		source: "(43:8)      ",
     		ctx
     	});
 
     	return block;
     }
 
-    // (31:22)      
+    // (39:22)      
     function fallback_block_2(ctx) {
     	let th;
 
@@ -2276,7 +2410,7 @@ var app = (function () {
     		c: function create() {
     			th = element("th");
     			attr_dev(th, "scope", "col");
-    			add_location(th, file$2, 31, 3, 1065);
+    			add_location(th, file$2, 39, 3, 1316);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, th, anchor);
@@ -2290,14 +2424,14 @@ var app = (function () {
     		block,
     		id: fallback_block_2.name,
     		type: "fallback",
-    		source: "(31:22)      ",
+    		source: "(39:22)      ",
     		ctx
     	});
 
     	return block;
     }
 
-    // (27:22)      
+    // (35:22)      
     function fallback_block_1(ctx) {
     	let th;
     	let t_value = (/*title*/ ctx[1] || /*prop*/ ctx[0]) + "";
@@ -2308,7 +2442,7 @@ var app = (function () {
     			th = element("th");
     			t = text(t_value);
     			attr_dev(th, "scope", "col");
-    			add_location(th, file$2, 27, 3, 950);
+    			add_location(th, file$2, 35, 3, 1201);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, th, anchor);
@@ -2326,21 +2460,21 @@ var app = (function () {
     		block,
     		id: fallback_block_1.name,
     		type: "fallback",
-    		source: "(27:22)      ",
+    		source: "(35:22)      ",
     		ctx
     	});
 
     	return block;
     }
 
-    // (23:22)      
+    // (31:22)      
     function fallback_block(ctx) {
     	let td;
 
     	const block = {
     		c: function create() {
     			td = element("td");
-    			add_location(td, file$2, 23, 3, 865);
+    			add_location(td, file$2, 31, 3, 1116);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, td, anchor);
@@ -2354,7 +2488,7 @@ var app = (function () {
     		block,
     		id: fallback_block.name,
     		type: "fallback",
-    		source: "(23:22)      ",
+    		source: "(31:22)      ",
     		ctx
     	});
 
@@ -2402,7 +2536,29 @@ var app = (function () {
     			current = true;
     		},
     		p: function update(ctx, [dirty]) {
-    			if_block.p(ctx, dirty);
+    			let previous_block_index = current_block_type_index;
+    			current_block_type_index = select_block_type(ctx);
+
+    			if (current_block_type_index === previous_block_index) {
+    				if_blocks[current_block_type_index].p(ctx, dirty);
+    			} else {
+    				group_outros();
+
+    				transition_out(if_blocks[previous_block_index], 1, 1, () => {
+    					if_blocks[previous_block_index] = null;
+    				});
+
+    				check_outros();
+    				if_block = if_blocks[current_block_type_index];
+
+    				if (!if_block) {
+    					if_block = if_blocks[current_block_type_index] = if_block_creators[current_block_type_index](ctx);
+    					if_block.c();
+    				}
+
+    				transition_in(if_block, 1);
+    				if_block.m(if_block_anchor.parentNode, if_block_anchor);
+    			}
     		},
     		i: function intro(local) {
     			if (current) return;
@@ -2431,60 +2587,89 @@ var app = (function () {
     }
 
     function instance$2($$self, $$props, $$invalidate) {
+    	let $value;
     	let { $$slots: slots = {}, $$scope } = $$props;
     	validate_slots("Column", slots, ['filter','header','footer','default']);
     	let { prop = "" } = $$props;
     	let { title = "" } = $$props;
     	let { headers = false } = $$props;
-    	const row = getContext(rowContextKey);
+    	let row = {};
+    	getRowCtx().row.subscribe(value => $$invalidate(3, row = value));
     	const tblSetFilter = getTblCtx().setFilter;
 
-    	setClmnCtx({
+    	let ctx = {
     		setFilter(filter) {
     			console.assert(prop, "A filtered column must define a `prop`");
 
     			// TODO: `prop` -> `thisControl` : find back that API
     			tblSetFilter(prop, filter && (row => filter(row[prop])));
     		}
-    	});
+    	};
 
+    	let value = writable(prop && typeof row === "object" && row[prop]);
+    	validate_store(value, "value");
+    	component_subscribe($$self, value, value => $$invalidate(4, $value = value));
+    	console.dir(value);
+
+    	//let unsubscribeValue: ()=> void;
+    	/*$: */
+    	if (prop && typeof row === "object") {
+    		/*if(unsubscribeValue) unsubscribeValue();
+    unsubscribeValue = */ value.subscribe(v => $$invalidate(3, row[prop] = v, row));
+
+    		ctx.value = value;
+    	}
+
+    	setClmnCtx(ctx);
     	const writable_props = ["prop", "title", "headers"];
 
     	Object.keys($$props).forEach(key => {
-    		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console_1.warn(`<Column> was created with unknown prop '${key}'`);
+    		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console_1$1.warn(`<Column> was created with unknown prop '${key}'`);
     	});
 
     	$$self.$$set = $$props => {
     		if ("prop" in $$props) $$invalidate(0, prop = $$props.prop);
     		if ("title" in $$props) $$invalidate(1, title = $$props.title);
     		if ("headers" in $$props) $$invalidate(2, headers = $$props.headers);
-    		if ("$$scope" in $$props) $$invalidate(4, $$scope = $$props.$$scope);
+    		if ("$$scope" in $$props) $$invalidate(6, $$scope = $$props.$$scope);
     	};
 
     	$$self.$capture_state = () => ({
-    		getContext,
     		specialRow,
-    		rowContextKey,
+    		getRowCtx,
     		getTblCtx,
     		setClmnCtx,
+    		writable,
     		prop,
     		title,
     		headers,
     		row,
-    		tblSetFilter
+    		tblSetFilter,
+    		ctx,
+    		value,
+    		$value
     	});
 
     	$$self.$inject_state = $$props => {
     		if ("prop" in $$props) $$invalidate(0, prop = $$props.prop);
     		if ("title" in $$props) $$invalidate(1, title = $$props.title);
     		if ("headers" in $$props) $$invalidate(2, headers = $$props.headers);
+    		if ("row" in $$props) $$invalidate(3, row = $$props.row);
+    		if ("ctx" in $$props) ctx = $$props.ctx;
+    		if ("value" in $$props) $$invalidate(5, value = $$props.value);
     	};
 
     	if ($$props && "$$inject" in $$props) {
     		$$self.$inject_state($$props.$$inject);
     	}
 
-    	return [prop, title, headers, row, $$scope, slots];
+    	$$self.$$.update = () => {
+    		if ($$self.$$.dirty & /*prop, row*/ 9) {
+    			 value.set(prop && typeof row === "object" && row[prop]);
+    		}
+    	};
+
+    	return [prop, title, headers, row, $value, value, $$scope, slots];
     }
 
     class Column extends SvelteComponentDev {
@@ -2528,7 +2713,7 @@ var app = (function () {
     /* src\Selection.svelte generated by Svelte v3.29.0 */
     const file$3 = "src\\Selection.svelte";
 
-    // (26:2) <th class="selection" slot="header" scope="col">
+    // (27:2) <th class="selection" slot="header" scope="col">
     function create_header_slot(ctx) {
     	let th;
     	let input;
@@ -2544,11 +2729,11 @@ var app = (function () {
     			attr_dev(input, "type", "checkbox");
     			input.checked = input_checked_value = !!/*all*/ ctx[0];
     			input.indeterminate = input_indeterminate_value = /*all*/ ctx[0] === "indeterminate";
-    			add_location(input, file$3, 26, 3, 797);
+    			add_location(input, file$3, 27, 3, 823);
     			attr_dev(th, "class", "selection");
     			attr_dev(th, "slot", "header");
     			attr_dev(th, "scope", "col");
-    			add_location(th, file$3, 25, 2, 744);
+    			add_location(th, file$3, 26, 2, 770);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, th, anchor);
@@ -2579,14 +2764,14 @@ var app = (function () {
     		block,
     		id: create_header_slot.name,
     		type: "slot",
-    		source: "(26:2) <th class=\\\"selection\\\" slot=\\\"header\\\" scope=\\\"col\\\">",
+    		source: "(27:2) <th class=\\\"selection\\\" slot=\\\"header\\\" scope=\\\"col\\\">",
     		ctx
     	});
 
     	return block;
     }
 
-    // (25:1) <Column>
+    // (26:1) <Column>
     function create_default_slot$1(ctx) {
     	let t;
     	let th;
@@ -2601,10 +2786,10 @@ var app = (function () {
     			input = element("input");
     			attr_dev(input, "type", "checkbox");
     			input.checked = /*selected*/ ctx[1];
-    			add_location(input, file$3, 30, 3, 959);
+    			add_location(input, file$3, 31, 3, 985);
     			attr_dev(th, "class", "selection");
     			attr_dev(th, "scope", "row");
-    			add_location(th, file$3, 29, 2, 920);
+    			add_location(th, file$3, 30, 2, 946);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, t, anchor);
@@ -2633,7 +2818,7 @@ var app = (function () {
     		block,
     		id: create_default_slot$1.name,
     		type: "slot",
-    		source: "(25:1) <Column>",
+    		source: "(26:1) <Column>",
     		ctx
     	});
 
@@ -2704,7 +2889,8 @@ var app = (function () {
     	let { $$slots: slots = {}, $$scope } = $$props;
     	validate_slots("Selection", slots, []);
     	let { selection } = $$props;
-    	const row = getContext(rowContextKey);
+    	let row = {};
+    	getRowCtx().row.subscribe(value => $$invalidate(5, row = value));
     	let all;
     	let selected;
     	let data;
@@ -2719,7 +2905,10 @@ var app = (function () {
     		if (!hie.indeterminate) $$invalidate(4, selection = new Set(hie.checked ? data : []));
     	}
 
-    	data = getTblCtx().getData();
+    	getTblCtx().data.subscribe(v => {
+    		$$invalidate(6, data = v);
+    	});
+
     	const writable_props = ["selection"];
 
     	Object.keys($$props).forEach(key => {
@@ -2733,8 +2922,7 @@ var app = (function () {
     	$$self.$capture_state = () => ({
     		Column,
     		getContext,
-    		tableContextKey,
-    		rowContextKey,
+    		getRowCtx,
     		getTblCtx,
     		selection,
     		row,
@@ -2747,9 +2935,10 @@ var app = (function () {
 
     	$$self.$inject_state = $$props => {
     		if ("selection" in $$props) $$invalidate(4, selection = $$props.selection);
+    		if ("row" in $$props) $$invalidate(5, row = $$props.row);
     		if ("all" in $$props) $$invalidate(0, all = $$props.all);
     		if ("selected" in $$props) $$invalidate(1, selected = $$props.selected);
-    		if ("data" in $$props) $$invalidate(5, data = $$props.data);
+    		if ("data" in $$props) $$invalidate(6, data = $$props.data);
     	};
 
     	if ($$props && "$$inject" in $$props) {
@@ -2757,11 +2946,11 @@ var app = (function () {
     	}
 
     	$$self.$$.update = () => {
-    		if ($$self.$$.dirty & /*selection*/ 16) {
+    		if ($$self.$$.dirty & /*selection, row*/ 48) {
     			 $$invalidate(1, selected = selection.has(row));
     		}
 
-    		if ($$self.$$.dirty & /*selection, data*/ 48) {
+    		if ($$self.$$.dirty & /*selection, data*/ 80) {
     			 $$invalidate(0, all = selection.size === 0
     			? false
     			: selection.size === data.length ? true : "indeterminate");
@@ -2987,15 +3176,15 @@ var app = (function () {
     	let dispose;
 
     	function click_handler(...args) {
-    		return /*click_handler*/ ctx[3](/*data*/ ctx[9], ...args);
+    		return /*click_handler*/ ctx[3](/*data*/ ctx[10], ...args);
     	}
 
     	function click_handler_1(...args) {
-    		return /*click_handler_1*/ ctx[4](/*data*/ ctx[9], ...args);
+    		return /*click_handler_1*/ ctx[4](/*data*/ ctx[10], ...args);
     	}
 
     	function click_handler_2(...args) {
-    		return /*click_handler_2*/ ctx[5](/*data*/ ctx[9], ...args);
+    		return /*click_handler_2*/ ctx[5](/*data*/ ctx[10], ...args);
     	}
 
     	function table_displayedData_binding(value) {
@@ -3004,7 +3193,7 @@ var app = (function () {
 
     	let table_props = {
     		key: "username",
-    		data: /*data*/ ctx[9],
+    		data: /*data*/ ctx[10],
     		columnFooters: true,
     		columnFilters: true,
     		$$slots: { default: [create_default_slot$2] },
@@ -3065,7 +3254,7 @@ var app = (function () {
     			ctx = new_ctx;
     			const table_changes = {};
 
-    			if (dirty & /*$$scope, displayedData, selection*/ 1027) {
+    			if (dirty & /*$$scope, displayedData, selection*/ 2051) {
     				table_changes.$$scope = { dirty, ctx };
     			}
 
@@ -3118,7 +3307,7 @@ var app = (function () {
     	let t0_value = /*selection*/ ctx[0].size + "";
     	let t0;
     	let t1;
-    	let t2_value = /*data*/ ctx[9].length + "";
+    	let t2_value = /*data*/ ctx[10].length + "";
     	let t2;
     	let t3;
 
@@ -3162,6 +3351,7 @@ var app = (function () {
     function create_filter_slot(ctx) {
     	let td;
     	let stringcontentfilter;
+    	let t;
     	let current;
     	stringcontentfilter = new StringContent({ $$inline: true });
 
@@ -3169,12 +3359,14 @@ var app = (function () {
     		c: function create() {
     			td = element("td");
     			create_component(stringcontentfilter.$$.fragment);
+    			t = space();
     			attr_dev(td, "slot", "filter");
     			add_location(td, file$5, 16, 4, 914);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, td, anchor);
     			mount_component(stringcontentfilter, td, null);
+    			append_dev(td, t);
     			current = true;
     		},
     		i: function intro(local) {
@@ -3203,13 +3395,13 @@ var app = (function () {
     	return block;
     }
 
-    // (18:4) <td slot="footer">
+    // (21:9) <td slot="footer">
     function create_footer_slot(ctx) {
     	let td;
     	let t0_value = /*displayedData*/ ctx[1].length + "";
     	let t0;
     	let t1;
-    	let t2_value = /*data*/ ctx[9].length + "";
+    	let t2_value = /*data*/ ctx[10].length + "";
     	let t2;
     	let t3;
 
@@ -3221,7 +3413,7 @@ var app = (function () {
     			t2 = text(t2_value);
     			t3 = text(" users displayed");
     			attr_dev(td, "slot", "footer");
-    			add_location(td, file$5, 17, 4, 966);
+    			add_location(td, file$5, 20, 9, 1113);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, td, anchor);
@@ -3242,37 +3434,7 @@ var app = (function () {
     		block,
     		id: create_footer_slot.name,
     		type: "slot",
-    		source: "(18:4) <td slot=\\\"footer\\\">",
-    		ctx
-    	});
-
-    	return block;
-    }
-
-    // (16:3) <Column prop="name">
-    function create_default_slot_1$1(ctx) {
-    	let t;
-
-    	const block = {
-    		c: function create() {
-    			t = space();
-    		},
-    		m: function mount(target, anchor) {
-    			insert_dev(target, t, anchor);
-    		},
-    		p: noop,
-    		i: noop,
-    		o: noop,
-    		d: function destroy(detaching) {
-    			if (detaching) detach_dev(t);
-    		}
-    	};
-
-    	dispatch_dev("SvelteRegisterBlock", {
-    		block,
-    		id: create_default_slot_1$1.name,
-    		type: "slot",
-    		source: "(16:3) <Column prop=\\\"name\\\">",
+    		source: "(21:9) <td slot=\\\"footer\\\">",
     		ctx
     	});
 
@@ -3318,7 +3480,6 @@ var app = (function () {
     			props: {
     				prop: "name",
     				$$slots: {
-    					default: [create_default_slot_1$1],
     					footer: [create_footer_slot],
     					filter: [create_filter_slot]
     				},
@@ -3361,14 +3522,14 @@ var app = (function () {
     			selection_1.$set(selection_1_changes);
     			const column0_changes = {};
 
-    			if (dirty & /*$$scope, selection*/ 1025) {
+    			if (dirty & /*$$scope, selection*/ 2049) {
     				column0_changes.$$scope = { dirty, ctx };
     			}
 
     			column0.$set(column0_changes);
     			const column1_changes = {};
 
-    			if (dirty & /*$$scope, displayedData*/ 1026) {
+    			if (dirty & /*$$scope, displayedData*/ 2050) {
     				column1_changes.$$scope = { dirty, ctx };
     			}
 
@@ -3435,9 +3596,10 @@ var app = (function () {
 
     function create_fragment$5(ctx) {
     	let promise_1;
-    	let t0;
-    	let t1_value = JSON.stringify(Array.from(/*selection*/ ctx[0])) + "";
-    	let t1;
+    	let t;
+    	let html_tag;
+    	let raw_value = "<p><pre>" + Array.from(/*selection*/ ctx[0]).map(/*func*/ ctx[9]).join("</pre></p><p></p><pre>") + "</pre></p>" + "";
+    	let html_anchor;
     	let current;
 
     	let info = {
@@ -3448,7 +3610,7 @@ var app = (function () {
     		pending: create_pending_block,
     		then: create_then_block,
     		catch: create_catch_block,
-    		value: 9,
+    		value: 10,
     		blocks: [,,,]
     	};
 
@@ -3457,18 +3619,20 @@ var app = (function () {
     	const block = {
     		c: function create() {
     			info.block.c();
-    			t0 = space();
-    			t1 = text(t1_value);
+    			t = space();
+    			html_anchor = empty();
+    			html_tag = new HtmlTag(html_anchor);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
     		},
     		m: function mount(target, anchor) {
     			info.block.m(target, info.anchor = anchor);
-    			info.mount = () => t0.parentNode;
-    			info.anchor = t0;
-    			insert_dev(target, t0, anchor);
-    			insert_dev(target, t1, anchor);
+    			info.mount = () => t.parentNode;
+    			info.anchor = t;
+    			insert_dev(target, t, anchor);
+    			html_tag.m(raw_value, target, anchor);
+    			insert_dev(target, html_anchor, anchor);
     			current = true;
     		},
     		p: function update(new_ctx, [dirty]) {
@@ -3476,11 +3640,11 @@ var app = (function () {
 
     			{
     				const child_ctx = ctx.slice();
-    				child_ctx[9] = info.resolved;
+    				child_ctx[10] = info.resolved;
     				info.block.p(child_ctx, dirty);
     			}
 
-    			if ((!current || dirty & /*selection*/ 1) && t1_value !== (t1_value = JSON.stringify(Array.from(/*selection*/ ctx[0])) + "")) set_data_dev(t1, t1_value);
+    			if ((!current || dirty & /*selection*/ 1) && raw_value !== (raw_value = "<p><pre>" + Array.from(/*selection*/ ctx[0]).map(/*func*/ ctx[9]).join("</pre></p><p></p><pre>") + "</pre></p>" + "")) html_tag.p(raw_value);
     		},
     		i: function intro(local) {
     			if (current) return;
@@ -3499,8 +3663,9 @@ var app = (function () {
     			info.block.d(detaching);
     			info.token = null;
     			info = null;
-    			if (detaching) detach_dev(t0);
-    			if (detaching) detach_dev(t1);
+    			if (detaching) detach_dev(t);
+    			if (detaching) detach_dev(html_anchor);
+    			if (detaching) html_tag.d();
     		}
     	};
 
@@ -3557,6 +3722,8 @@ var app = (function () {
     		$$invalidate(1, displayedData);
     	}
 
+    	const func = s => JSON.stringify(s);
+
     	$$self.$capture_state = () => ({
     		Table,
     		Column,
@@ -3586,7 +3753,8 @@ var app = (function () {
     		click_handler_2,
     		click_handler_3,
     		selection_1_selection_binding,
-    		table_displayedData_binding
+    		table_displayedData_binding,
+    		func
     	];
     }
 

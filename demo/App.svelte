@@ -1,5 +1,6 @@
 <script lang="ts">
 	import {Table, Column, Selection, StringContentFilter} from '../src'
+
 	let promise = fetch('https://jsonplaceholder.typicode.com/users')
 			.then(response => response.json()),
 		selection = new Set<any>(),
@@ -17,11 +18,18 @@
 				<td slot="footer">{selection.size} on {data.length} users selected</td>
 			</Column>
 			<Column prop="name">
-				<td slot="filter"><StringContentFilter /></td>
-				<td slot="footer">{displayedData.length} on {data.length} users displayed</td>
+				<td slot="filter">
+					<StringContentFilter />
+					<!-- If there is a line-break between `</td>` and `<td slot=...>`, it is considered to be
+						the (empty) default slot content -->
+				</td><td slot="footer">
+					{displayedData.length} on {data.length} users displayed
+				</td>
 			</Column>
 			<Column prop="email" />
 		</Table>
 	{/await}
-	{JSON.stringify(Array.from(selection))}
+	{@html '<p><pre>'+
+		Array.from(selection).map(s=> JSON.stringify(s)).join('</pre></p><p></p><pre>')+
+		'</pre></p>'}
 </template>

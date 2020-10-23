@@ -1,10 +1,11 @@
 <script lang="ts">
 	import Column from './Column.svelte'
 	import {getContext} from 'svelte';
-	import {tableContextKey, rowContextKey, getTblCtx} from './table'
+	import {getRowCtx, getTblCtx} from './table'
 
 	export let selection: Set<any>;
-	const row: any = getContext(rowContextKey);
+	let row: any = {};
+	getRowCtx().row.subscribe((value: any)=> row = value);
 	let all: 'indeterminate'|boolean;
 	let selected: boolean;
 	let data: any[];
@@ -21,7 +22,7 @@
 		if(!hie.indeterminate)
 			selection = new Set(hie.checked?data:[]);
 	}
-	data = getTblCtx().getData();
+	getTblCtx().data.subscribe((v: any[])=> { data = v; });
 </script>
 <template>
 	<Column>

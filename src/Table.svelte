@@ -4,6 +4,7 @@
   	import {exclude} from './utils/exclude'
   	import {prefixFilter} from './utils/prefixFilter'
 	import {useActions} from './utils/useActions'
+	import {readable} from 'svelte/store'
 
 	export let data: any[];
 	export let key: string = null;
@@ -12,8 +13,10 @@
 	export let columnFooters: boolean = false;
 	export let use = [];
 	export let filters = new Map<any, (row: any)=> boolean>();
+	let setRawData: (raw: any[])=> void;
+	$: setRawData && setRawData(data);
 	setTblCtx({
-		getData: ()=> data,
+		data: readable(data, (set: (raw: any[])=> void)=> { setRawData = set; }),
 		setFilter(key: any, filter: (row: any)=> boolean) {
 			filters[filter?'set':'delete'](key, filter);
 			filters = new Map<any, (row: any)=> boolean>(filters);
@@ -23,22 +26,23 @@
 		return key ? row[key] : ndx;
 	}
 	export let displayedData: any[];
+	$: console.assert(key || !filters.size, 'A table with `filters` needs a `key`');
 	$: displayedData = data.filter(row=> Array.from(filters.values()).every(filter=> filter(row)))
 </script>
 <template>
 	{filters.size}
 	<table use:useActions={use} {...exclude($$props, ['use', 'class', 'tr$'])}>
-		{#if columnFilters}
-			<thead>
-				<TableRow id="filter" row={specialRow.filter} {...prefixFilter($$props, 'tr$')}>
-					<slot row={specialRow.filter} />
-				</TableRow>
-			</thead>
-		{/if}
 		{#if columnHeaders}
 			<thead>
 				<TableRow id="header" row={specialRow.header} {...prefixFilter($$props, 'tr$')}>
 					<slot row={specialRow.header} />
+				</TableRow>
+			</thead>
+		{/if}
+		{#if columnFilters}
+			<thead>
+				<TableRow id="filter" row={specialRow.filter} {...prefixFilter($$props, 'tr$')}>
+					<slot row={specialRow.filter} />
 				</TableRow>
 			</thead>
 		{/if}

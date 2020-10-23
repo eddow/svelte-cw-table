@@ -1,22 +1,30 @@
 <script lang="ts">
-	import {getContext, } from "svelte";
-	import {specialRow, rowContextKey, getTblCtx, setClmnCtx} from './table'
-	//import {writable} from "svelte/store";
+	import {specialRow, getRowCtx, getTblCtx, setClmnCtx} from './table'
+	import {writable} from "svelte/store";
 
 	export let prop: string = '';
 	export let title: string = '';
 	export let headers: boolean = false;
-	const row: any = getContext(rowContextKey);
+	let row: any = {};
+	getRowCtx().row.subscribe((value: any)=> row = value);
 	const tblSetFilter = getTblCtx().setFilter;
-	setClmnCtx({
+	let ctx: any = {
 		setFilter(filter: (name: any)=> boolean) {
 			console.assert(prop, 'A filtered column must define a `prop`')
 			// TODO: `prop` -> `thisControl` : find back that API
 			tblSetFilter(prop, filter && ((row: any)=> filter(row[prop])));
 		}
-	})
-	/*let value = prop && typeof row === 'object' && writable(row[prop]);
-	if(value) value.subscribe((v: any)=> row[prop] = v);*/
+	};
+	let value = writable(prop && (typeof row === 'object') && row[prop]);
+	console.dir(value); 
+	$: value.set(prop && typeof row === 'object' && row[prop]);
+	//let unsubscribeValue: ()=> void;
+	/*$: */if(prop && typeof row === 'object') {
+		/*if(unsubscribeValue) unsubscribeValue();
+		unsubscribeValue = */value.subscribe((v: any)=> row[prop] = v);
+		ctx.value = value;
+	}
+	setClmnCtx(ctx);
 </script>
 <template>
 	{#if !row}
@@ -36,9 +44,9 @@
 	{:else}
 		<slot>
 			{#if headers}
-				<th scope="row">{row[prop]}</th>
+				<th scope="row">{$value}</th>
 			{:else}
-				<td>{row[prop]}</td>
+				<td>{$value}</td>
 			{/if}
 		</slot>
 	{/if}
